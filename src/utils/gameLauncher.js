@@ -161,6 +161,59 @@ export function resolveMultiGameFrameMessage({
   return { scopeId: frame.scopeId, status: payload.type };
 }
 
+function clamp01(value) {
+  return Math.min(1, Math.max(0, value));
+}
+
+export function resolveMultiGameInputSyncMessage({
+  event,
+  expectedOrigin,
+  frames,
+  frameElements,
+}) {
+  if (event.origin !== expectedOrigin) return null;
+  const payload = event.data;
+  if (
+    payload?.channel !== "multi-game" ||
+    payload.version !== 1 ||
+    payload.type !== "input-sync"
+  ) {
+    return null;
+  }
+
+  const frame = frames.find((item) => item.scopeId === payload.scope);
+  const element = frameElements.get(payload.scope);
+  if (!frame || !element || event.source !== element.contentWindow) return null;
+
+  const input = payload.input;
+  if (
+    !input ||
+    !["mouse", "touch"].includes(input.kind) ||
+    !["down", "move", "up", "cancel"].includes(input.phase) ||
+    !Array.isArray(input.points) ||
+    input.points.length === 0
+  ) {
+    return null;
+  }
+  const points = input.points.map((point) => ({
+    id: Number.isFinite(point?.id) ? point.id : 0,
+    x: Number.isFinite(point?.x) ? clamp01(point.x) : null,
+    y: Number.isFinite(point?.y) ? clamp01(point.y) : null,
+  }));
+  if (points.some((point) => point.x === null || point.y === null)) return null;
+
+  return {
+    scopeId: frame.scopeId,
+    input: {
+      kind: input.kind,
+      phase: input.phase,
+      button: Number.isInteger(input.button) ? input.button : 0,
+      buttons: Number.isInteger(input.buttons) ? input.buttons : 0,
+      points,
+    },
+  };
+}
+
 export function convertBinToLx(buffer, random = Math.random) {
   const bytes = new Uint8Array(buffer);
   if (bytes.length > 4 && bytes[0] === 112 && bytes[1] === 108) {

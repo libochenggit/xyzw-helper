@@ -101,7 +101,10 @@ test("multi-game bootstrap gates every game runtime behind the storage bridge", 
   const staticScriptSources = [
     ...multiGameHtml.matchAll(/<script\s+src="([^"]+)"/g),
   ].map((match) => match[1]);
-  assert.deepEqual(staticScriptSources, ["multi-game-storage-bridge.js"]);
+  assert.deepEqual(staticScriptSources, [
+    "multi-game-storage-bridge.js",
+    "multi-game-input-sync.js",
+  ]);
 
   for (const runtimeFile of expectedRuntimeFiles) {
     assert.ok(multiGameHtml.includes(`"${runtimeFile}"`), runtimeFile);

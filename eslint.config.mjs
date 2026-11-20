@@ -50,10 +50,13 @@ export default antfu(
       "vue/component-definition-name-casing": ["error", "PascalCase"],
     },
   },
-  // The storage bridge is maintained here, unlike the bundled game client.
+  // The storage bridge and input sync are maintained here, unlike the bundled game client.
   {
     name: "project/game-storage-bridge",
-    files: ["public/game/multi-game-storage-bridge.js"],
+    files: [
+      "public/game/multi-game-storage-bridge.js",
+      "public/game/multi-game-input-sync.js",
+    ],
   },
   {
     name: "project/node-tests",

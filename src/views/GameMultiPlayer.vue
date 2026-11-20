@@ -6,6 +6,17 @@
       </button>
       <strong class="toolbar-title">批量游戏</strong>
       <span class="toolbar-count">{{ frames.length }} 个窗口</span>
+      <label
+        class="sync-click-toggle"
+        title="开启后，点击任意游戏窗口时，其他窗口会在相同相对位置执行同样的点击与拖动"
+      >
+        <NSwitch
+          size="small"
+          :value="syncClickEnabled"
+          @update:value="setSyncClickEnabled"
+        />
+        <span>同步点击</span>
+      </label>
       <span
         v-if="skippedSummary"
         class="toolbar-skipped"
@@ -14,7 +25,7 @@
         {{ skippedSummary }}
       </span>
       <span class="toolbar-warning">
-        在窗口标题栏滚动可横向浏览；按住 Ctrl + 滚轮缩放页面，可同时查看更多账号
+        每行最多 5 个账号，上下滚动滚轮可浏览更多窗口；按住 Ctrl + 滚轮缩放页面
       </span>
       <NPopover trigger="hover" placement="bottom-end" :width="360">
         <template #trigger>
@@ -42,12 +53,7 @@
       </NPopover>
     </header>
 
-    <main
-      v-if="frames.length"
-      ref="gameStrip"
-      class="game-strip"
-      @wheel="handleStripWheel"
-    >
+    <main v-if="frames.length" class="game-strip">
       <article
         v-for="frame in frames"
         :key="frame.scopeId"
@@ -68,7 +74,7 @@
             title="将窗口向左移动"
             :aria-label="`将 ${frame.name} 的游戏窗口向左移动`"
             :disabled="movingFrame || !canMoveFrame(frame.scopeId, -1)"
-            @click="moveFrame(frame.scopeId, -1, $event)"
+            @click="moveFrame(frame.scopeId, -1)"
           >
             ←
           </button>
@@ -78,7 +84,7 @@
             title="将窗口向右移动"
             :aria-label="`将 ${frame.name} 的游戏窗口向右移动`"
             :disabled="movingFrame || !canMoveFrame(frame.scopeId, 1)"
-            @click="moveFrame(frame.scopeId, 1, $event)"
+            @click="moveFrame(frame.scopeId, 1)"
           >
             →
           </button>
@@ -153,10 +159,9 @@
 </template>
 
 <script setup>
-import { NPopover } from "naive-ui";
+import { NPopover, NSwitch } from "naive-ui";
 import {
   computed,
-  nextTick,
   onBeforeMount,
   onMounted,
   onUnmounted,
@@ -170,15 +175,14 @@ import {
   moveMultiGameSession,
   readActiveMultiGameLaunch,
   resolveMultiGameFrameMessage,
+  resolveMultiGameInputSyncMessage,
 } from "@/utils/gameLauncher";
 
 const router = useRouter();
 const FRAME_LOAD_TIMEOUT_MS = 45_000;
+const SYNC_CLICK_STORAGE_KEY = "multi-game-sync-click-enabled";
 const launch = ref(readLaunchSafely());
-const gameStrip = ref(null);
 const movingFrame = ref(false);
-let stripScrollTarget = 0;
-let stripScrollAnimationId = 0;
 const frameDomOrder = (launch.value?.sessions || []).map(
   (session) => session.scopeId,
 );
@@ -240,6 +244,51 @@ function readLaunchSafely() {
   }
 }
 
+function readSyncClickPreference() {
+  try {
+    return window.localStorage.getItem(SYNC_CLICK_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+const syncClickEnabled = ref(readSyncClickPreference());
+
+function postToFrame(scopeId, payload) {
+  const target = frameElements.get(scopeId)?.contentWindow;
+  if (!target) return;
+  try {
+    target.postMessage(payload, window.location.origin);
+  } catch {
+    // The frame may be navigating or already closed.
+  }
+}
+
+function broadcastSyncClickConfig() {
+  for (const frame of frames.value) {
+    postToFrame(frame.scopeId, {
+      channel: "multi-game",
+      version: 1,
+      type: "input-sync-config",
+      scope: frame.scopeId,
+      enabled: syncClickEnabled.value,
+    });
+  }
+}
+
+function setSyncClickEnabled(enabled) {
+  syncClickEnabled.value = Boolean(enabled);
+  try {
+    window.localStorage.setItem(
+      SYNC_CLICK_STORAGE_KEY,
+      syncClickEnabled.value ? "1" : "0",
+    );
+  } catch {
+    // The toggle still works for this session without persistence.
+  }
+  broadcastSyncClickConfig();
+}
+
 function statusLabel(scopeId) {
   return {
     loading: "加载中",
@@ -297,75 +346,8 @@ function canMoveFrame(scopeId, direction) {
   return index >= 0 && targetIndex >= 0 && targetIndex < sessions.length;
 }
 
-function stopStripScrollAnimation(strip = gameStrip.value) {
-  if (stripScrollAnimationId) {
-    window.cancelAnimationFrame(stripScrollAnimationId);
-    stripScrollAnimationId = 0;
-  }
-  if (strip) stripScrollTarget = strip.scrollLeft;
-}
-
-function animateStripScroll() {
-  const strip = gameStrip.value;
-  if (!strip) {
-    stripScrollAnimationId = 0;
-    return;
-  }
-
-  const distance = stripScrollTarget - strip.scrollLeft;
-  if (Math.abs(distance) <= 0.5) {
-    strip.scrollLeft = stripScrollTarget;
-    stripScrollAnimationId = 0;
-    return;
-  }
-
-  strip.scrollLeft += distance * 0.24;
-  stripScrollAnimationId = window.requestAnimationFrame(animateStripScroll);
-}
-
-function handleStripWheel(event) {
-  const strip = gameStrip.value;
-  if (!strip || !event.deltaY) return;
-  if (event.ctrlKey || event.metaKey) {
-    stopStripScrollAnimation(strip);
-    return;
-  }
-  if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) {
-    stopStripScrollAnimation(strip);
-    return;
-  }
-
-  let delta = event.deltaY;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
-  else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-    delta *= strip.clientWidth;
-  }
-
-  const maxScrollLeft = Math.max(0, strip.scrollWidth - strip.clientWidth);
-  if (!stripScrollAnimationId) stripScrollTarget = strip.scrollLeft;
-  const nextScrollTarget = Math.min(
-    maxScrollLeft,
-    Math.max(0, stripScrollTarget + delta),
-  );
-  if (nextScrollTarget === stripScrollTarget) {
-    if (stripScrollAnimationId) event.preventDefault();
-    return;
-  }
-
-  event.preventDefault();
-  stripScrollTarget = nextScrollTarget;
-  if (!stripScrollAnimationId) {
-    stripScrollAnimationId = window.requestAnimationFrame(animateStripScroll);
-  }
-}
-
-async function moveFrame(scopeId, direction, event) {
+function moveFrame(scopeId, direction) {
   if (movingFrame.value) return;
-
-  const button = event.currentTarget;
-  const strip = gameStrip.value;
-  stopStripScrollAnimation(strip);
-  const previousLeft = button.getBoundingClientRect().left;
   movingFrame.value = true;
 
   try {
@@ -375,16 +357,7 @@ async function moveFrame(scopeId, direction, event) {
       sessionStorage: window.sessionStorage,
     });
     if (!updatedLaunch) return;
-
     launch.value = updatedLaunch;
-    await nextTick();
-    if (!strip || !button.isConnected) return;
-
-    const desiredScrollLeft =
-      strip.scrollLeft + button.getBoundingClientRect().left - previousLeft;
-    const maxScrollLeft = Math.max(0, strip.scrollWidth - strip.clientWidth);
-    strip.scrollLeft = Math.min(maxScrollLeft, Math.max(0, desiredScrollLeft));
-    stripScrollTarget = strip.scrollLeft;
   } catch (error) {
     console.error("Unable to move MultiGame frame:", error);
     // eslint-disable-next-line no-alert -- Preserve the existing native notification or confirmation flow.
@@ -422,6 +395,34 @@ function handleMessage(event) {
   if (result && frameStates[result.scopeId]) {
     clearFrameTimeout(result.scopeId);
     frameStates[result.scopeId].status = result.status;
+    if (result.status === "ready") {
+      postToFrame(result.scopeId, {
+        channel: "multi-game",
+        version: 1,
+        type: "input-sync-config",
+        scope: result.scopeId,
+        enabled: syncClickEnabled.value,
+      });
+    }
+  }
+
+  const syncMessage = resolveMultiGameInputSyncMessage({
+    event,
+    expectedOrigin: window.location.origin,
+    frames: frames.value,
+    frameElements,
+  });
+  if (syncMessage && syncClickEnabled.value) {
+    for (const frame of frames.value) {
+      if (frame.scopeId === syncMessage.scopeId) continue;
+      postToFrame(frame.scopeId, {
+        channel: "multi-game",
+        version: 1,
+        type: "input-sync-replay",
+        scope: frame.scopeId,
+        input: syncMessage.input,
+      });
+    }
   }
 }
 
@@ -430,12 +431,12 @@ function goToTokens() {
 }
 
 onBeforeMount(() => window.addEventListener("message", handleMessage));
-onMounted(() =>
-  frames.value.forEach((frame) => armFrameTimeout(frame.scopeId)),
-);
+onMounted(() => {
+  frames.value.forEach((frame) => armFrameTimeout(frame.scopeId));
+  broadcastSyncClickConfig();
+});
 onUnmounted(() => {
   window.removeEventListener("message", handleMessage);
-  stopStripScrollAnimation();
   for (const scopeId of frameTimeouts.keys()) clearFrameTimeout(scopeId);
 });
 </script>
@@ -507,6 +508,17 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.sync-click-toggle {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  color: #e5e7eb;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
 .crash-help-trigger {
   flex: none;
   padding: 3px 7px;
@@ -540,17 +552,18 @@ onUnmounted(() => {
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
-  flex-flow: row nowrap;
+  align-content: flex-start;
+  flex-flow: row wrap;
   gap: 12px;
   height: calc(100dvh - 52px);
   padding: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .game-panel {
   box-sizing: border-box;
-  flex: 0 0 min(clamp(360px, 32vw, 480px), calc((100dvh - 112px) * 9 / 16));
+  flex: 0 0 calc((100% - 48px) / 5);
   min-width: 0;
   height: auto;
   overflow: hidden;
