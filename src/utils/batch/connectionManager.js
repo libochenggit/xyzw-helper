@@ -2,6 +2,8 @@
  * WebSocket连接管理器
  */
 
+import { ensureKeepAliveActive } from "../backgroundKeepAlive.js";
+
 // 全局连接队列控制 - 限制并发连接数
 export const connectionQueue = { active: 0 };
 
@@ -42,11 +44,16 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
     tokenId,
     timeout = batchSettings.connectionTimeout,
   ) => {
+    // 页面处于后台时定时器/事件循环可能被节流，放宽超时与轮询间隔留足余量
+    const isHidden =
+      typeof document !== "undefined" && document.hidden === true;
+    const effectiveTimeout = isHidden ? Math.max(timeout, 30000) : timeout;
+    const pollInterval = isHidden ? 1000 : 500;
     const start = Date.now();
-    while (Date.now() - start < timeout) {
+    while (Date.now() - start < effectiveTimeout) {
       const status = tokenStore.getWebSocketStatus(tokenId);
       if (status === "connected") return true;
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, pollInterval));
     }
     return false;
   };
@@ -89,6 +96,10 @@ export function createConnectionManager({ tokenStore, batchSettings, addLog }) {
           message: `连接超时，尝试重连...`,
           type: "warning",
         });
+
+        // 重连前确保后台保活处于激活状态（AudioContext 被挂起时恢复），
+        // 避免后台节流导致“首次超时→重试仍超时”的连锁失败
+        ensureKeepAliveActive();
 
         tokenStore.closeWebSocketConnection(tokenId);
         await new Promise((r) => setTimeout(r, batchSettings.reconnectDelay));

@@ -2542,6 +2542,75 @@
                   style="width: 100px"
                 />
               </div>
+              <div
+                class="setting-item"
+                style="
+                  flex-direction: row;
+                  justify-content: space-between;
+                  align-items: center;
+                "
+              >
+                <label class="setting-label"
+                  >后台保活（防后台节流，需保持浏览器开启）</label
+                >
+                <n-switch
+                  v-model:value="batchSettings.enableBackgroundKeepAlive"
+                />
+              </div>
+              <div
+                class="setting-item"
+                style="
+                  flex-direction: row;
+                  justify-content: space-between;
+                  align-items: center;
+                "
+                v-if="batchSettings.enableBackgroundKeepAlive"
+              >
+                <label class="setting-label">保活状态</label>
+                <span style="font-size: 12px; color: #999">{{
+                  keepAliveStatus
+                }}</span>
+              </div>
+              <div
+                class="setting-item"
+                style="
+                  flex-direction: row;
+                  justify-content: space-between;
+                  align-items: center;
+                "
+                v-if="batchSettings.enableBackgroundKeepAlive"
+              >
+                <label class="setting-label">保活音量</label>
+                <n-select
+                  v-model:value="batchSettings.keepAliveAudioLevel"
+                  :options="keepAliveLevelOptions"
+                  size="small"
+                  style="width: 100px"
+                />
+              </div>
+              <div
+                class="setting-item"
+                style="
+                  flex-direction: row;
+                  justify-content: space-between;
+                  align-items: center;
+                "
+              >
+                <label class="setting-label">补跑窗口(分钟)</label>
+                <n-input-number
+                  v-model:value="batchSettings.catchUpWindowMinutes"
+                  :min="0"
+                  :max="120"
+                  :step="5"
+                  size="small"
+                  style="width: 100px"
+                />
+              </div>
+              <div class="setting-item" style="width: 100%">
+                <span style="font-size: 12px; color: #999; line-height: 1.6">
+                  提示：保活通过播放人耳基本不可闻的微弱音频，让浏览器豁免后台节流（标签页出现喇叭图标属正常）。首次需点击页面任意处激活（浏览器自动播放策略）。游戏连接仅在任务执行时建立、执行完立即断开，不会常驻、不影响你手动玩。若“保活状态”提示仍被节流，请调高“保活音量”。需保持浏览器开启；若电脑进入睡眠任务仍会暂停，请在系统电源设置中关闭“接通电源时睡眠”，唤醒后由补跑窗口自动补执行。
+                </span>
+              </div>
             </div>
           </n-grid-item>
         </n-grid>
@@ -3059,6 +3128,14 @@ import {
 } from "vue";
 import { $emit } from "@/stores/events/index.ts";
 import { gameTokens, tokenGroups, useTokenStore } from "@/stores/tokenStore";
+import {
+  setKeepAliveEnabled as applyKeepAliveEnabled,
+  getKeepAliveState,
+  loadKeepAliveLevel,
+  setKeepAliveLevel,
+  startKeepAlive,
+  stopKeepAlive,
+} from "@/utils/backgroundKeepAlive.js";
 // Import batch task modules
 import {
   addTaskSaveLog,
@@ -3087,7 +3164,6 @@ import {
   formatTimeDifference,
   getTodayStartSec,
   isTodayAvailable,
-  matchesCronExpression,
   pickArenaTargetId,
   validateCronExpression,
 } from "@/utils/batch";
@@ -3098,10 +3174,15 @@ import {
   normalizeBlackMarketPurchaseList,
 } from "@/utils/batch/blackMarketConfig";
 import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
+
 import { goldItemsConfig, merchantConfig } from "@/utils/dreamConstants";
 
 import { isSameGameValue } from "@/utils/gameValue.js";
-
+import {
+  createThrottleResistantInterval,
+  isTickThrottled,
+} from "@/utils/schedulerWorker.js";
+import { findMissedRunTime } from "@/utils/taskCatchUp.js";
 import { DEFAULT_WEIRD_TOWER_MAX_CLIMB } from "@/utils/towerClimbLimit.js";
 
 // Initialize token store, message service, and task runner
@@ -3681,7 +3762,24 @@ const batchSettings = reactive({
   // 页面刷新配置
   enableRefresh: false,
   refreshInterval: 360, // 分钟
+  // 后台保活与错过任务补跑配置
+  enableBackgroundKeepAlive: true,
+  keepAliveAudioLevel: "medium", // 保活音量档位：low/medium/high
+  catchUpWindowMinutes: 10, // 页面恢复后补跑错过任务的时间窗口（分钟）
 });
+
+// 后台保活状态（供设置面板展示）
+const keepAliveStatus = ref("未启用");
+// 节流自检：后台仍被节流（保活可能未生效）时为 true
+const keepAliveThrottled = ref(false);
+// 上一次调度 tick 的时间戳，用于节流自检
+let lastSchedulerTickTs = 0;
+// 保活音量档位选项
+const keepAliveLevelOptions = [
+  { label: "低", value: "low" },
+  { label: "中", value: "medium" },
+  { label: "高", value: "high" },
+];
 
 // Load batch settings from localStorage
 const loadBatchSettings = () => {
@@ -3723,6 +3821,42 @@ const openBatchSettings = () => {
 
 // Load settings on component mount
 loadBatchSettings();
+
+// 同步后台保活开关与音量档位到保活模块，并定期刷新状态展示
+applyKeepAliveEnabled(batchSettings.enableBackgroundKeepAlive !== false);
+setKeepAliveLevel(batchSettings.keepAliveAudioLevel || loadKeepAliveLevel());
+let keepAliveStatusTimer = setInterval(() => {
+  const state = getKeepAliveState();
+  if (!state.enabled) {
+    keepAliveStatus.value = "已关闭";
+  } else if (!state.supported) {
+    keepAliveStatus.value = "当前浏览器不支持";
+  } else if (state.audioState === "running") {
+    keepAliveStatus.value = keepAliveThrottled.value
+      ? "运行中（后台仍被节流，请调高保活音量）"
+      : "运行中";
+  } else if (state.audioState === "suspended") {
+    keepAliveStatus.value = "待激活（点击页面任意处）";
+  } else {
+    keepAliveStatus.value = "未启用";
+  }
+}, 2000);
+
+// 保活开关变化时立即生效
+watch(
+  () => batchSettings.enableBackgroundKeepAlive,
+  (val) => {
+    applyKeepAliveEnabled(val !== false);
+  },
+);
+
+// 保活音量档位变化时立即生效
+watch(
+  () => batchSettings.keepAliveAudioLevel,
+  (val) => {
+    setKeepAliveLevel(val);
+  },
+);
 
 // ======================
 // Legacy Gift Feature
@@ -4122,6 +4256,15 @@ const toggleTaskEnabled = (taskId, enabled) => {
       message: `=== 定时任务 ${task.name} 已${enabled ? "启用" : "禁用"} ===`,
       type: "info",
     });
+    // 启用任务时同步启动后台保活（开关处于用户手势上下文，可激活音频）
+    if (enabled && batchSettings.enableBackgroundKeepAlive !== false) {
+      startKeepAlive();
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        message: "后台保活已启用（页面切到后台也能按时执行定时任务）",
+        type: "info",
+      });
+    }
   }
 };
 
@@ -4472,10 +4615,10 @@ const pageLoadTime = Date.now();
 
 // Health check for the scheduler
 const healthCheck = () => {
-  // If interval is not running, restart it
-  if (!intervalId.value) {
+  // If scheduler is not running, restart it
+  if (!intervalId.value || !intervalId.value.alive?.()) {
     console.error(
-      `[${new Date().toISOString()}] Task scheduler interval is not running, restarting...`,
+      `[${new Date().toISOString()}] Task scheduler is not running, restarting...`,
     );
     startScheduler();
   }
@@ -4515,98 +4658,97 @@ const healthCheck = () => {
   }
 };
 
-// Start the scheduler
-const startScheduler = () => {
-  // Clear any existing interval first
-  if (intervalId.value) {
-    clearInterval(intervalId.value);
-  }
+// 调度器单次检查逻辑（由 Worker 驱动，后台不受定时器节流影响）
+const schedulerTick = () => {
+  try {
+    const now = new Date();
 
-  // Check every 10 seconds instead of 60 seconds for more timely task execution
-  intervalId.value = setInterval(() => {
-    try {
-      const now = new Date();
-      const currentTime = now.toLocaleTimeString("zh-CN", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
+    // 节流自检：隐藏态下若两次 tick 间隔远超预期，说明保活未成功豁免节流
+    const nowTs = now.getTime();
+    keepAliveThrottled.value = isTickThrottled(
+      lastSchedulerTickTs,
+      nowTs,
+      10000,
+      typeof document !== "undefined" && document.hidden === true,
+    );
+    lastSchedulerTickTs = nowTs;
 
-      // Don't skip all tasks if isRunning is true, just skip individual task execution if already running
-      const tasksToRun = scheduledTasks.value.filter((task) => task.enabled);
+    // Don't skip all tasks if isRunning is true, just skip individual task execution if already running
+    const tasksToRun = scheduledTasks.value.filter((task) => task.enabled);
 
-      if (tasksToRun.length === 0) {
+    if (tasksToRun.length === 0) {
+      return;
+    }
+
+    // 补跑窗口：覆盖页面后台被节流/冻结、电脑睡眠唤醒后错过的执行分钟
+    const catchUpWindow = Number(batchSettings.catchUpWindowMinutes) || 0;
+
+    tasksToRun.forEach((task) => {
+      // 在当前分钟 + 补跑窗口内查找应执行的时间点（无窗口时等价于原精确分钟匹配）
+      const runTime = findMissedRunTime(task, now, catchUpWindow);
+      if (!runTime) {
         return;
       }
 
-      tasksToRun.forEach((task) => {
-        let shouldRun = false;
-
-        if (task.runType === "daily") {
-          // Check if current time matches the scheduled time
-          const taskTime = task.runTime;
-          const nowTime = now.toLocaleTimeString("zh-CN", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-          shouldRun = nowTime === taskTime;
-        } else if (task.runType === "cron") {
-          // Improved cron expression parsing using shared utility
-          try {
-            shouldRun = matchesCronExpression(task.cronExpression, now);
-          } catch (error) {
-            console.error(
-              `[${new Date().toISOString()}] Error parsing cron expression ${task.cronExpression}:`,
-              error,
-            );
-            addLog({
-              time: currentTime,
-              message: `=== 解析定时任务 ${task.name} 的Cron表达式失败: ${error.message} ===`,
-              type: "error",
-            });
-            return;
-          }
-        }
-
-        if (shouldRun) {
-          // Check if the task was already executed in the last minute to avoid duplicate execution
-          const taskExecutionKey = `${task.id}_${now.getDate()}_${now.getHours()}_${now.getMinutes()}`;
-          const lastExecutionKey = localStorage.getItem(
-            `lastTaskExecution_${task.id}`,
-          );
-
-          if (lastExecutionKey !== taskExecutionKey) {
-            // Update last execution time
-            localStorage.setItem(
-              `lastTaskExecution_${task.id}`,
-              taskExecutionKey,
-            );
-
-            // Execute the task
-            lastTaskExecution = Date.now();
-            executeScheduledTask(task);
-          } else {
-            // Only log once per minute to avoid spamming logs
-            // But since we check every 10s, this might log multiple times if we don't track logged state
-            // For now, we can skip logging "already executed" to keep logs clean
-          }
-        }
-      });
-    } catch (error) {
-      console.error(
-        `[${new Date().toISOString()}] Error in task scheduler:`,
-        error,
+      // Check if the task was already executed for the matched minute to avoid duplicate execution
+      const taskExecutionKey = `${task.id}_${runTime.getDate()}_${runTime.getHours()}_${runTime.getMinutes()}`;
+      const lastExecutionKey = localStorage.getItem(
+        `lastTaskExecution_${task.id}`,
       );
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `=== 定时任务调度服务发生错误: ${error.message} ===`,
-        type: "error",
-      });
-    }
-  }, 10000); // Check every 10 seconds
+
+      if (lastExecutionKey === taskExecutionKey) {
+        // 该分钟已执行过，跳过（不重复记日志，保持日志干净）
+        return;
+      }
+
+      if (runTime.getTime() < now.getTime() - 60 * 1000) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          message: `=== 检测到定时任务 ${task.name} 错过执行时间 ${runTime.toLocaleTimeString("zh-CN", { hour12: false })}，开始补跑 ===`,
+          type: "warning",
+        });
+      }
+
+      // Update last execution time
+      localStorage.setItem(`lastTaskExecution_${task.id}`, taskExecutionKey);
+
+      // Execute the task
+      lastTaskExecution = Date.now();
+      executeScheduledTask(task);
+    });
+  } catch (error) {
+    console.error(
+      `[${new Date().toISOString()}] Error in task scheduler:`,
+      error,
+    );
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      message: `=== 定时任务调度服务发生错误: ${error.message} ===`,
+      type: "error",
+    });
+  }
 };
+
+// Start the scheduler
+const startScheduler = () => {
+  // Stop any existing scheduler first
+  if (intervalId.value) {
+    intervalId.value.stop?.();
+    intervalId.value = null;
+  }
+
+  // 使用 Web Worker 驱动的抗节流定时器，每 10 秒检查一次；
+  // Worker 不可用时自动退回 setInterval + 漂移检测
+  intervalId.value = createThrottleResistantInterval(schedulerTick, 10000);
+};
+
+// 页面从后台/睡眠恢复可见时，立即补一次调度检查
+const handleVisibilityChange = () => {
+  if (document.visibilityState === "visible") {
+    schedulerTick();
+  }
+};
+document.addEventListener("visibilitychange", handleVisibilityChange);
 
 // Token刷新等待处理函数
 const handleTokenRefreshWaiting = (data) => {
@@ -4626,6 +4768,13 @@ onMounted(() => {
   loadTaskTemplates();
   // 监听Token刷新等待事件
   $emit.on("token:refresh:waiting", handleTokenRefreshWaiting);
+  // 存在启用的定时任务时尝试启动后台保活（无用户手势时会自动等待首次交互重试）
+  if (
+    batchSettings.enableBackgroundKeepAlive !== false &&
+    scheduledTasks.value.some((task) => task.enabled)
+  ) {
+    startKeepAlive();
+  }
 });
 
 // Cleanup countdown interval on unmount
@@ -4638,9 +4787,9 @@ onBeforeUnmount(() => {
   // 移除Token刷新等待事件监听
   $emit.off("token:refresh:waiting", handleTokenRefreshWaiting);
 
-  // Cleanup task scheduler intervals
+  // Cleanup task scheduler
   if (intervalId.value) {
-    clearInterval(intervalId.value);
+    intervalId.value.stop?.();
     intervalId.value = null;
     addLog({
       time: new Date().toLocaleTimeString(),
@@ -4648,6 +4797,16 @@ onBeforeUnmount(() => {
       type: "info",
     });
   }
+
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+  if (keepAliveStatusTimer) {
+    clearInterval(keepAliveStatusTimer);
+    keepAliveStatusTimer = null;
+  }
+
+  // 调度器已停止，释放后台保活占用的音频资源
+  stopKeepAlive();
 
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
