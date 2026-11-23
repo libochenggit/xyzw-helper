@@ -164,6 +164,46 @@ test("failed config reads can be retried and unsafe versions are rejected", asyn
   );
 });
 
+test("a 404 server bundle falls back to the CDN published version", async () => {
+  const store = {
+    async sendMessageWithPromise() {
+      return { dataBundleVer: "server-missing-ver" };
+    },
+  };
+  const seen = [];
+  const fetchConfig = async (url) => {
+    seen.push(url);
+    if (url.endsWith("/data/server-missing-ver/config.json"))
+      return { ok: false, status: 404 };
+    if (url.endsWith("/data/version.json"))
+      return { ok: true, json: async () => ({ version: "cdn-current-ver" }) };
+    if (url.endsWith("/data/cdn-current-ver/config.json"))
+      return { ok: true, json: async () => officialConfig() };
+    throw new Error(`unexpected url ${url}`);
+  };
+  const config = await loadDailyTaskConfig(store, "fallback-a", fetchConfig);
+  assert.equal(config.tasks.length, 3);
+  assert.equal(seen.length, 3);
+});
+
+test("non-404 config failures are not masked by the version fallback", async () => {
+  const store = {
+    async sendMessageWithPromise() {
+      return { dataBundleVer: "server-error-ver" };
+    },
+  };
+  let calls = 0;
+  const fetchConfig = async () => {
+    calls++;
+    return { ok: false, status: 500 };
+  };
+  await assert.rejects(
+    loadDailyTaskConfig(store, "fallback-b", fetchConfig),
+    /读取失败/,
+  );
+  assert.equal(calls, 1);
+});
+
 test("duplicate point-reward IDs are rejected before duplicate claims can be scheduled", () => {
   for (const name of ["DayLimitConf", "WeekLimitConf"]) {
     const config = officialConfig();

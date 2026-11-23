@@ -4,6 +4,10 @@ const activeTokenRuns = new Set();
 // The official HangUpInviteDialog exposes four help slots, independently of daily tasks.
 const HANG_UP_HELP_SLOTS = 4;
 
+// Official resource CDN hosting the immutable daily-task configuration bundles.
+const CONFIG_CDN = "https://xxz-xyzw-res.hortorgames.com";
+const CONFIG_VERSION_PATTERN = /^[\w-]+$/;
+
 /**
  * Keep daily and hang-up operations for one account from overlapping.
  * @param {string} tokenId Account identity.
@@ -150,8 +154,30 @@ export async function fillHangUpTime({
 }
 
 /**
+ * Fetch and validate one published configuration bundle.
+ * @param {Function} fetchConfig Fetch implementation for the official CDN.
+ * @param {string} version Published data-bundle version.
+ * @returns {Promise<object>} Validated task and reward configuration.
+ * @throws {Error} With `status` set when the CDN rejects the request.
+ */
+async function fetchValidatedConfig(fetchConfig, version) {
+  const response = await fetchConfig(
+    `${CONFIG_CDN}/data/${version}/config.json`,
+    { signal: AbortSignal.timeout(30000) },
+  );
+  if (!response.ok) {
+    const error = new Error("官方任务配置读取失败");
+    error.status = response.status;
+    throw error;
+  }
+  return validateDailyTaskConfig(await response.json());
+}
+
+/**
  * Load task targets from the official data version returned by the game server.
  * Only immutable configuration is cached; role progress is never cached here.
+ * The server may advertise a bundle version the CDN no longer hosts (404); in
+ * that case fall back to the CDN's own published version so daily tasks still run.
  * @param {object} tokenStore Live command transport.
  * @param {string} tokenId Selected account identity.
  * @param {Function} [fetchConfig] Fetch implementation for the official CDN.
@@ -169,17 +195,28 @@ export async function loadDailyTaskConfig(
     15000,
   );
   const version = response?.dataBundleVer;
-  if (typeof version !== "string" || !/^[\w-]+$/.test(version))
+  if (typeof version !== "string" || !CONFIG_VERSION_PATTERN.test(version))
     throw new Error("服务器未提供有效的任务配置版本");
   if (!configsByVersion.has(version)) {
     const loading = (async () => {
-      const response = await fetchConfig(
-        `https://xxz-xyzw-res.hortorgames.com/data/${version}/config.json`,
-        { signal: AbortSignal.timeout(30000) },
-      );
-      if (!response.ok) throw new Error("官方任务配置读取失败");
-      const config = await response.json();
-      return validateDailyTaskConfig(config);
+      try {
+        return await fetchValidatedConfig(fetchConfig, version);
+      } catch (error) {
+        if (error.status !== 404) throw error;
+        const versionResponse = await fetchConfig(
+          `${CONFIG_CDN}/data/version.json`,
+          { signal: AbortSignal.timeout(30000) },
+        );
+        if (!versionResponse.ok) throw new Error("官方任务配置读取失败");
+        const cdnVersion = (await versionResponse.json())?.version;
+        if (
+          typeof cdnVersion !== "string" ||
+          !CONFIG_VERSION_PATTERN.test(cdnVersion) ||
+          cdnVersion === version
+        )
+          throw new Error("官方任务配置读取失败");
+        return await fetchValidatedConfig(fetchConfig, cdnVersion);
+      }
     })();
     configsByVersion.set(version, loading);
     loading.catch(() => {
