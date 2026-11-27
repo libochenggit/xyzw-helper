@@ -1,0 +1,14 @@
+name: Keep Railway Awake
+on:
+  schedule:
+    # 每 5 分钟 ping 一次，防止 Railway Free 层休眠
+    - cron: "*/5 * * * *"
+  workflow_dispatch:  # 也支持手动触发
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Railway backend
+        run: |
+          curl -fsS -o /dev/null -w "%{http_code}\n" https://${{ secrets.RAILWAY_DOMAIN }}/health || echo "ping failed"
