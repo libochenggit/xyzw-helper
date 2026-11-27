@@ -5,6 +5,8 @@
   "description": "XYZW游戏Token管理器 - 支持Base64导入和WebSocket连接管理",
   "main": "src/main.js",
   "scripts": {
+    "postinstall": "cd render-backend && npm install",
+    "start": "cd render-backend && node server.js",
     "testr": "node ./test/roleToken.js",
     "testd": "node ./test/token.js",
     "dev": "vite",

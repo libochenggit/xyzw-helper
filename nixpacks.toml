@@ -1,9 +1,0 @@
-[nixpacks]
-builder = "node"
-
-[build]
-command = "cd render-backend && npm install"
-
-[start]
-command = "cd render-backend && node server.js"
-port = 3000

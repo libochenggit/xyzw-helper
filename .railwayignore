@@ -1,0 +1,33 @@
+# 跳过所有前端文件和无关内容
+src/
+public/
+dist/
+.vite/
+docs/
+test/
+.DS_Store
+*.log
+.env
+supabase.env
+.git/
+.github/
+.gitignore
+.vscode/
+.trae/
+*.md
+*.toml
+*.yml
+*.yaml
+*.config.*
+*.ts
+uno.config.ts
+eslint.config.mjs
+vite.config.js
+worker.js
+README*
+LICENSE*
+
+# 跳过根目录 package.json（用 render-backend 的）
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
