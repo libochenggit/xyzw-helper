@@ -30,30 +30,21 @@ export function createLogManager({
     // 限制logs数组大小，防止内存占用过大
     const maxLogEntries = batchSettings.maxLogEntries || 1000;
     if (logs.value.length > maxLogEntries) {
-      logs.value = logs.value.slice(-maxLogEntries);
+      // 使用 splice 原地删除旧条目，避免 slice 重建数组导致 computed 重新计算
+      logs.value.splice(0, logs.value.length - maxLogEntries);
     }
 
-    // 尝试DOM操作，但不依赖nextTick确保日志显示
-    // 在后台运行时，浏览器可能会限制DOM操作
-    try {
-      if (logContainer.value && autoScrollLog.value) {
-        // 直接尝试滚动，不使用nextTick
-        logContainer.value.scrollTop = logContainer.value.scrollHeight;
-      }
-    } catch (error) {
-      // 忽略DOM操作错误，确保日志数据仍然被记录
-      console.warn("Failed to scroll log container:", error);
-    }
-
-    // 同时使用nextTick作为后备，确保在页面回到前台时能正确滚动
+    // 等 Vue DOM 更新完 computed filteredLogs 后，再滚到底部
     nextTick(() => {
-      try {
-        if (logContainer.value && autoScrollLog.value) {
-          logContainer.value.scrollTop = logContainer.value.scrollHeight;
+      requestAnimationFrame(() => {
+        try {
+          if (logContainer.value && autoScrollLog.value) {
+            logContainer.value.scrollTop = logContainer.value.scrollHeight;
+          }
+        } catch (error) {
+          // 忽略错误
         }
-      } catch (error) {
-        // 忽略错误
-      }
+      });
     });
   };
 

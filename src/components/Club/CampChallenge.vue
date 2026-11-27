@@ -303,7 +303,7 @@
 
     <!-- 4 大多维战术视图切换 Tab -->
     <div class="view-tabs-container" v-if="battleInfo && !loading">
-      <n-tabs
+      <NTabs
         v-model:value="activeViewTab"
         type="segment"
         animated
@@ -333,7 +333,7 @@
             <span>🥋 详细武将布阵大表</span>
           </div>
         </n-tab>
-      </n-tabs>
+      </NTabs>
     </div>
 
     <!-- 加载状态 -->
@@ -1039,7 +1039,7 @@
           </n-spin>
         </div>
 
-        <n-tabs
+        <NTabs
           v-else
           type="segment"
           animated
@@ -1047,7 +1047,8 @@
           class="player-modal-tabs"
         >
           <!-- 选项卡一：进攻流水（我方主动进攻敌方成员，attackType === 1） -->
-          <n-tab-pane name="offense" tab="进攻流水">
+          <NTabPane name="offense">
+            <template #tab>进攻流水</template>
             <div class="battle-records-tab">
               <!-- 进攻统计面板 -->
               <div class="personal-summary-grid">
@@ -1146,10 +1147,11 @@
                 <n-empty description="当前日期暂无进攻流水记录" size="small" />
               </div>
             </div>
-          </n-tab-pane>
+          </NTabPane>
 
           <!-- 选项卡二：防守流水（敌方主动进攻我方成员，attackType === 0） -->
-          <n-tab-pane name="defense" tab="防守流水">
+          <NTabPane name="defense">
+            <template #tab>防守流水</template>
             <div class="battle-records-tab">
               <!-- 防守统计面板 -->
               <div class="personal-summary-grid">
@@ -1252,8 +1254,8 @@
                 <n-empty description="当前日期暂无防守流水记录" size="small" />
               </div>
             </div>
-          </n-tab-pane>
-        </n-tabs>
+          </NTabPane>
+        </NTabs>
       </div>
     </n-modal>
   </div>
@@ -1275,7 +1277,7 @@ import {
   TrophyOutline,
 } from "@vicons/ionicons5";
 import html2canvas from "html2canvas";
-import { NAvatar, NButton, NSelect, NTag, useMessage } from "naive-ui";
+import { NAvatar, NButton, NSelect, NTabPane, NTabs, NTag, useMessage } from "naive-ui";
 import { computed, h, onMounted, ref, watch } from "vue";
 import { useTokenStore } from "@/stores/tokenStore";
 import {

@@ -7,6 +7,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import cron from "node-cron";
+import WebSocket from "ws";
 import { createApiKeyMiddleware } from "./lib/apiKeyAuth.js";
 import { GameClient } from "./lib/gameClient.js";
 
@@ -22,9 +23,11 @@ app.use(cors());
 app.use(express.json());
 
 // ==================== Supabase 客户端 ====================
+// supabase-js 2.40+ 在 Node.js < 22 时要求显式传入 WebSocket 实现
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY,
+  { realtime: { transport: WebSocket } },
 );
 
 // ==================== 任务定义 ====================
@@ -238,17 +241,35 @@ async function executeTask(task) {
 
   for (const token of targetTokens) {
     let tokenData;
+    let wsUrl = token.ws_url;
     try {
-      tokenData =
-        typeof token.token === "string" && token.token.startsWith("{")
-          ? JSON.parse(token.token)
-          : {
-              roleToken: token.token,
-              roleId: token.roleId,
-              sessId: token.sessId,
-              connId: token.connId,
-              isRestore: token.isRestore,
-            };
+      if (
+        typeof token.token === "string" &&
+        (token.token.startsWith("{") || token.token.startsWith("["))
+      ) {
+        // 模式 A：token 列存的是完整 JSON（后端旧格式）
+        tokenData = JSON.parse(token.token);
+      } else {
+        // 模式 B：token 列存的是纯 roleToken 字符串（前端常用格式）
+        // 同时兼容 Supabase 可能的字段名变体（roleid / roleId / role_id）
+        const roleId = token.roleid ?? token.roleId ?? token.role_id;
+        const sessId = token.sessid ?? token.sessId ?? token.sess_id;
+        const connId = token.connid ?? token.connId ?? token.conn_id;
+        const isRestore = token.isrestore ?? token.isRestore ?? false;
+        tokenData = {
+          roleToken: token.token,
+          roleId,
+          sessId,
+          connId,
+          isRestore,
+        };
+
+        // 若没有自定义 ws_url，构造与前端完全一致的连接地址
+        // （直接 encode roleToken 纯字符串，不走 JSON.stringify 包装）
+        if (!wsUrl && typeof token.token === "string") {
+          wsUrl = `wss://xxz-xyzw.hortorgames.com/agent?p=${encodeURIComponent(token.token)}&e=x&lang=chinese`;
+        }
+      }
     } catch (err) {
       addLog("ERROR", "task", `Token解析失败: ${token.name}`, {
         error: err.message,
@@ -257,7 +278,7 @@ async function executeTask(task) {
     }
 
     tokenData.name = token.name;
-    const client = new GameClient(tokenData, token.ws_url);
+    const client = new GameClient(tokenData, wsUrl);
 
     try {
       await client.connect(15000);

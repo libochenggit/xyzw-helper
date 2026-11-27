@@ -97,6 +97,13 @@ jspm_packages/
 .env.production
 .env.local
 .env.*.local
+# Supabase env files（含密钥，绝不能提交）
+supabase.env
+**/supabase.env
+
+# Trae 临时产物
+.trae-html-share-packages/
+compiled-check.js
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

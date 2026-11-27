@@ -314,8 +314,9 @@
 
         <!-- Batch Functions -->
         <n-card title="批量功能列表" style="margin-top: 16px">
-          <n-tabs type="line" animated>
-            <n-tab-pane name="daily" tab="日常">
+          <NTabs type="line" animated>
+            <NTabPane name="daily">
+              <template #tab>日常</template>
               <n-space>
                 <n-button
                   size="small"
@@ -426,8 +427,9 @@
                   一键玄武赐福
                 </n-button>
               </n-space>
-            </n-tab-pane>
-            <n-tab-pane name="dungeon" tab="副本">
+            </NTabPane>
+            <NTabPane name="dungeon">
+              <template #tab>副本</template>
               <n-space>
                 <n-button
                   size="small"
@@ -493,8 +495,9 @@
                   逐鹿盐山竞猜
                 </n-button>
               </n-space>
-            </n-tab-pane>
-            <n-tab-pane name="baoku" tab="宝库">
+            </NTabPane>
+            <NTabPane name="baoku">
+              <template #tab>宝库</template>
               <n-space>
                 <n-button
                   size="small"
@@ -519,8 +522,9 @@
                   一键宝库4,5层
                 </n-button>
               </n-space>
-            </n-tab-pane>
-            <n-tab-pane name="weirdTower" tab="怪异塔">
+            </NTabPane>
+            <NTabPane name="weirdTower">
+              <template #tab>怪异塔</template>
               <n-space>
                 <n-input-number
                   v-model:value="weirdTowerMaxClimb"
@@ -578,8 +582,9 @@
                   一键领取怪异塔免费道具
                 </n-button>
               </n-space>
-            </n-tab-pane>
-            <n-tab-pane name="resource" tab="资源">
+            </NTabPane>
+            <NTabPane name="resource">
+              <template #tab>资源</template>
               <n-space>
                 <n-button
                   size="small"
@@ -659,8 +664,9 @@
                   一键购买俱乐部5皮肤币
                 </n-button>
               </n-space>
-            </n-tab-pane>
-            <n-tab-pane name="legacy" tab="功法">
+            </NTabPane>
+            <NTabPane name="legacy">
+              <template #tab>功法</template>
               <n-space>
                 <n-button
                   size="small"
@@ -677,8 +683,9 @@
                   批量功法残卷赠送
                 </n-button>
               </n-space>
-            </n-tab-pane>
-            <n-tab-pane name="monthly" tab="月度">
+            </NTabPane>
+            <NTabPane name="monthly">
+              <template #tab>月度</template>
               <n-space>
                 <n-button
                   size="small"
@@ -711,8 +718,8 @@
                   月赛助威
                 </n-button>
               </n-space>
-            </n-tab-pane>
-          </n-tabs>
+            </NTabPane>
+          </NTabs>
         </n-card>
       </div>
 
@@ -2053,19 +2060,19 @@
             </div>
 
             <n-checkbox-group v-model:value="taskForm.selectedTasks">
-              <n-tabs
+              <NTabs
                 type="line"
                 animated
                 size="small"
                 pane-style="padding-top: 12px;"
                 default-value="daily"
               >
-                <n-tab-pane
+                <NTabPane
                   v-for="group in taskGroupDefinitions"
                   :key="group.name"
                   :name="group.name"
-                  :tab="group.label"
                 >
+                  <template #tab>{{ group.label }}</template>
                   <n-grid :cols="2" :x-gap="12" :y-gap="8">
                     <n-grid-item
                       v-for="task in groupedAvailableTasks[group.name]"
@@ -2076,16 +2083,16 @@
                       }}</n-checkbox>
                     </n-grid-item>
                   </n-grid>
-                </n-tab-pane>
+                </NTabPane>
 
-                <n-tab-pane
+                <NTabPane
                   v-if="
                     groupedAvailableTasks.other &&
                     groupedAvailableTasks.other.length > 0
                   "
                   name="other"
-                  tab="其他"
                 >
+                  <template #tab>其他</template>
                   <n-grid :cols="2" :x-gap="12" :y-gap="8">
                     <n-grid-item
                       v-for="task in groupedAvailableTasks.other"
@@ -2096,8 +2103,8 @@
                       }}</n-checkbox>
                     </n-grid-item>
                   </n-grid>
-                </n-tab-pane>
-              </n-tabs>
+                </NTabPane>
+              </NTabs>
             </n-checkbox-group>
           </div>
           <div
@@ -5815,7 +5822,8 @@ const filteredLogs = computed(() => {
   if (filterErrorsOnly.value) {
     return logs.value.filter((log) => log.type === "error");
   }
-  return logs.value;
+  // 用 [..logs.value] 创建新数组引用，确保 watch(filteredLogs) 能检测到 push/splice 的变化
+  return [...logs.value];
 });
 
 const currentRunningTokenName = computed(() => {
@@ -6027,6 +6035,10 @@ const getValidGroupTokenIds = (groupId) => {
 
 // 注: pickArenaTargetId, FISH_TARGET, ARENA_TARGET, getTodayStartSec, isTodayAvailable, calculateMonthProgress 已从 @/utils/batch 导入
 
+// 获取日志容器 DOM —— 不用 Vue template ref（沙箱/HMR 下可能绑定失败），
+// 直接用 class 选择器拿，最稳
+const getLogContainer = () => document.querySelector(".log-card .log-container");
+
 const addLog = (log) => {
   // 添加日志数据到数组
   logs.value.push(log);
@@ -6034,41 +6046,32 @@ const addLog = (log) => {
   // 限制logs数组大小，防止内存占用过大
   const maxLogEntries = batchSettings.maxLogEntries || 1000;
   if (logs.value.length > maxLogEntries) {
-    logs.value = logs.value.slice(-maxLogEntries);
+    // 使用 splice 原地删除旧条目，避免 slice 重建数组导致 computed 重新计算
+    logs.value.splice(0, logs.value.length - maxLogEntries);
   }
 
-  // 尝试DOM操作，但不依赖nextTick确保日志显示
-  // 在后台运行时，浏览器可能会限制DOM操作
-  try {
-    if (logContainer.value && autoScrollLog.value) {
-      // 直接尝试滚动，不使用nextTick
-      logContainer.value.scrollTop = logContainer.value.scrollHeight;
-    }
-  } catch (error) {
-    // 忽略DOM操作错误，确保日志数据仍然被记录
-    console.warn("Failed to scroll log container:", error);
-  }
-
-  // 同时使用nextTick作为后备，确保在页面回到前台时能正确滚动
-  nextTick(() => {
-    try {
-      if (logContainer.value && autoScrollLog.value) {
-        logContainer.value.scrollTop = logContainer.value.scrollHeight;
-      }
-    } catch (error) {
-      // 忽略错误
-    }
-  });
+  // 滚动由 watch(filteredLogs) 统一处理
 };
 
-watch(autoScrollLog, (newValue) => {
-  if (newValue && logContainer.value) {
+// 兜底：filteredLogs 只要有任何变化（加日志、删日志、filterErrorsOnly切换），
+// 且 autoScrollLog=true，就滚到底部
+watch(filteredLogs, () => {
+  if (autoScrollLog.value) {
     nextTick(() => {
-      try {
-        logContainer.value.scrollTop = logContainer.value.scrollHeight;
-      } catch (error) {
-        // 忽略DOM操作错误
-        console.warn("Failed to scroll log container:", error);
+      const container = getLogContainer();
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+  }
+}, { flush: "post" });
+
+watch(autoScrollLog, (newValue) => {
+  if (newValue) {
+    nextTick(() => {
+      const container = getLogContainer();
+      if (container) {
+        container.scrollTop = container.scrollHeight;
       }
     });
   }
@@ -6626,11 +6629,12 @@ const stopBatch = () => {
   border-bottom: none;
 }
 
-.log-card :deep(.n-card__content) {
+.log-card :deep(.n-card-content) {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0; /* flex 布局中必须！允许子元素收缩触发 overflow */
 }
 
 .log-header-controls {
@@ -6647,7 +6651,7 @@ const stopBatch = () => {
   border-radius: 4px;
   margin-top: 10px;
   font-family: monospace;
-  min-height: 200px;
+  min-height: 0; /* flex 布局中必须！否则内容撑开不触发 overflow */
 }
 
 .log-item {
@@ -6812,19 +6816,21 @@ const stopBatch = () => {
   }
 
   .log-card {
-    height: auto !important;
+    height: auto; /* 移动端高度自适应 */
   }
 
-  .log-card :deep(.n-card__content) {
-    flex: none !important;
-    overflow: visible !important;
-    display: block !important;
+  /* 移动端也保持 flex 布局！不能用 !important 破坏，否则 overflow-y:auto 不生效 */
+  .log-card :deep(.n-card-content) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
   }
 
   .log-container {
-    height: 300px;
-    min-height: 300px;
-    flex: none !important;
+    height: 40vh; /* 移动端给个视口 40% 的固定高度，让 overflow 能触发 */
+    flex: none;
   }
 
   .log-header-controls {

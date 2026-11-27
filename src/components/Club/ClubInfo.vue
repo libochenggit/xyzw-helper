@@ -131,8 +131,8 @@
           <div class="section-head">
             <span class="section-title">俱乐部资料</span>
           </div>
-          <n-tabs v-model:value="activeTab" type="line" animated>
-            <n-tab-pane
+          <NTabs v-model:value="activeTab" type="line" animated>
+            <NTabPane
               name="overview"
               tab="概览"
               display-directive="show:lazy"
@@ -355,9 +355,10 @@
                   </NGi>
                 </NGrid>
               </div>
-            </n-tab-pane>
+            </NTabPane>
 
-            <n-tab-pane name="members" tab="成员" display-directive="show:lazy">
+            <NTabPane name="members" display-directive="show:lazy">
+              <template #tab>成员</template>
               <div class="members" ref="exportDom">
                 <NDataTable
                   :columns="memberColumns"
@@ -371,24 +372,24 @@
                   style="height: 600px"
                 />
               </div>
-            </n-tab-pane>
+            </NTabPane>
 
-            <n-tab-pane
+            <NTabPane
               name="history"
               tab="俱乐部历史战绩"
               display-directive="show:lazy"
             >
               <ClubHistoryRecords inline />
-            </n-tab-pane>
+            </NTabPane>
 
-            <n-tab-pane
+            <NTabPane
               name="weirdtower"
               tab="怪异塔信息"
               display-directive="show:lazy"
             >
               <ClubWeirdTowerInfo inline />
-            </n-tab-pane>
-          </n-tabs>
+            </NTabPane>
+          </NTabs>
         </div>
 
         <!-- 右：盐场岛屿信息（所在岛屿 + 岛屿体系 + 实时榜单） -->
@@ -729,6 +730,8 @@ import {
   NModal,
   NSpace,
   NStatistic,
+  NTabPane,
+  NTabs,
   NTag,
   NThing,
   useDialog,

@@ -16,24 +16,44 @@
     <IdentityCard embedded />
 
     <!-- 下方选卡分区切换（Tabs）：日常｜俱乐部｜活动 -->
-    <n-tabs
+    <NTabs
       class="section-tabs"
       v-model:value="activeSection"
       type="line"
       animated
       size="small"
     >
-      <n-tab-pane name="daily" tab="日常" />
-      <n-tab-pane name="club" tab="俱乐部" />
-      <n-tab-pane name="activity" tab="活动" />
-      <n-tab-pane v-if="ENABLE_TOOLS_TAB" name="tools" tab="工具" />
-      <n-tab-pane name="apexChallengeGroup" tab="逐鹿盐山" />
-      <n-tab-pane name="campChallengeGroup" tab="营地挑战" />
-      <n-tab-pane name="saltFieldGroup" tab="盐场" />
-      <n-tab-pane name="peachGroup" tab="蟠桃园" />
-      <n-tab-pane name="rankGroup" tab="排行榜" />
-      <n-tab-pane name="fightPvp" tab="切磋" />
-    </n-tabs>
+      <NTabPane name="daily">
+        <template #tab>日常</template>
+      </NTabPane>
+      <NTabPane name="club">
+        <template #tab>俱乐部</template>
+      </NTabPane>
+      <NTabPane name="activity">
+        <template #tab>活动</template>
+      </NTabPane>
+      <NTabPane v-if="ENABLE_TOOLS_TAB" name="tools">
+        <template #tab>工具</template>
+      </NTabPane>
+      <NTabPane name="apexChallengeGroup">
+        <template #tab>逐鹿盐山</template>
+      </NTabPane>
+      <NTabPane name="campChallengeGroup">
+        <template #tab>营地挑战</template>
+      </NTabPane>
+      <NTabPane name="saltFieldGroup">
+        <template #tab>盐场</template>
+      </NTabPane>
+      <NTabPane name="peachGroup">
+        <template #tab>蟠桃园</template>
+      </NTabPane>
+      <NTabPane name="rankGroup">
+        <template #tab>排行榜</template>
+      </NTabPane>
+      <NTabPane name="fightPvp">
+        <template #tab>切磋</template>
+      </NTabPane>
+    </NTabs>
 
     <!-- 阵容（仅日常） -->
     <TeamFormation v-show="activeSection === 'daily'" />
@@ -196,18 +216,28 @@
           justify-content: center;
         "
       >
-        <n-tabs
+        <NTabs
           type="segment"
           animated
           v-model:value="saltFieldSubTab"
           size="small"
         >
-          <n-tab-pane name="warrank" tab="盐场" />
-          <n-tab-pane name="weekBattle" tab="本周盐场战绩" />
-          <n-tab-pane name="monthBattle" tab="本月盐场战绩" />
-          <n-tab-pane name="legionWarMap" tab="盐场地图" />
-          <n-tab-pane name="legionWarStatistics" tab="盐场战况" />
-        </n-tabs>
+          <NTabPane name="warrank">
+            <template #tab>盐场</template>
+          </NTabPane>
+          <NTabPane name="weekBattle">
+            <template #tab>本周盐场战绩</template>
+          </NTabPane>
+          <NTabPane name="monthBattle">
+            <template #tab>本月盐场战绩</template>
+          </NTabPane>
+          <NTabPane name="legionWarMap">
+            <template #tab>盐场地图</template>
+          </NTabPane>
+          <NTabPane name="legionWarStatistics">
+            <template #tab>盐场战况</template>
+          </NTabPane>
+        </NTabs>
       </div>
 
       <!-- 盐场匹配信息详情 样式切换 -->
@@ -275,15 +305,19 @@
           justify-content: center;
         "
       >
-        <n-tabs
+        <NTabs
           type="segment"
           animated
           v-model:value="peachSubTab"
           size="small"
         >
-          <n-tab-pane name="peach" tab="蟠桃园信息" />
-          <n-tab-pane name="peachBattle" tab="蟠桃园战绩" />
-        </n-tabs>
+          <NTabPane name="peach">
+            <template #tab>蟠桃园信息</template>
+          </NTabPane>
+          <NTabPane name="peachBattle">
+            <template #tab>蟠桃园战绩</template>
+          </NTabPane>
+        </NTabs>
       </div>
 
       <!-- 蟠桃园信息 样式切换 -->
@@ -328,13 +362,23 @@
           justify-content: center;
         "
       >
-        <n-tabs type="segment" animated v-model:value="rankSubTab" size="small">
-          <n-tab-pane name="serverrank" tab="区服榜" />
-          <n-tab-pane name="toprank" tab="巅峰榜" />
-          <n-tab-pane name="topclubrank" tab="俱乐部榜" />
-          <n-tab-pane name="goldclubrank" tab="黄金积分榜" />
-          <n-tab-pane name="greatRouteRank" tab="伟大航路积分榜" />
-        </n-tabs>
+        <NTabs type="segment" animated v-model:value="rankSubTab" size="small">
+          <NTabPane name="serverrank">
+            <template #tab>区服榜</template>
+          </NTabPane>
+          <NTabPane name="toprank">
+            <template #tab>巅峰榜</template>
+          </NTabPane>
+          <NTabPane name="topclubrank">
+            <template #tab>俱乐部榜</template>
+          </NTabPane>
+          <NTabPane name="goldclubrank">
+            <template #tab>黄金积分榜</template>
+          </NTabPane>
+          <NTabPane name="greatRouteRank">
+            <template #tab>伟大航路积分榜</template>
+          </NTabPane>
+        </NTabs>
       </div>
 
       <div class="warrank-full-container" v-if="rankSubTab === 'serverrank'">
@@ -366,7 +410,7 @@
 </template>
 
 <script setup>
-import { useMessage } from "naive-ui";
+import { NTabPane, NTabs, useMessage } from "naive-ui";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useTokenStore } from "@/stores/tokenStore";
 

@@ -126,10 +126,18 @@
         size="small"
         style="margin-bottom: 12px"
       >
-        <NTabPane name="overview" tab="🏆 总览" />
-        <NTabPane name="schedule" tab="🗓 赛程" />
-        <NTabPane name="bet" tab="🎯 竞猜" />
-        <NTabPane name="vote" tab="📣 助威" />
+        <NTabPane name="overview">
+          <template #tab>🏆 总览</template>
+        </NTabPane>
+        <NTabPane name="schedule">
+          <template #tab>🗓 赛程</template>
+        </NTabPane>
+        <NTabPane name="bet">
+          <template #tab>🎯 竞猜</template>
+        </NTabPane>
+        <NTabPane name="vote">
+          <template #tab>📣 助威</template>
+        </NTabPane>
       </NTabs>
 
       <!-- ==================== 总览 ==================== -->

@@ -114,9 +114,13 @@ export default {
     }
 
     // Serve static assets (Cloudflare Pages)
-    // If env.ASSETS is available (e.g. in Cloudflare Pages Functions), use it to fetch static assets
     if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
+      const assetResponse = await env.ASSETS.fetch(request);
+      // SPA fallback: if asset not found, serve index.html for client-side routing
+      if (assetResponse.status === 404) {
+        return env.ASSETS.fetch(new Request(url.origin + "/index.html", request));
+      }
+      return assetResponse;
     }
 
     // Default response for non-proxy paths

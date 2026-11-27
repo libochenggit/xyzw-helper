@@ -249,8 +249,8 @@
                   name="detail"
                 >
                   <!-- 原始数据和解码数据的选项卡 -->
-                  <n-tabs type="card" size="small" animated>
-                    <n-tab-pane name="formatted" display-directive="show:lazy">
+                  <NTabs type="card" size="small" animated>
+                    <NTabPane name="formatted" display-directive="show:lazy">
                       <template #tab>
                         <n-icon size="14" class="mr-1">
                           <svg viewBox="0 0 24 24">
@@ -289,8 +289,8 @@
                           formatJSONSmart(historyMessage.data)
                         }}</pre>
                       </div>
-                    </n-tab-pane>
-                    <n-tab-pane name="raw" display-directive="show:lazy">
+                    </NTabPane>
+                    <NTabPane name="raw" display-directive="show:lazy">
                       <template #tab>
                         <n-icon size="14" class="mr-1">
                           <svg viewBox="0 0 24 24">
@@ -329,8 +329,8 @@
                           JSON.stringify(historyMessage.data, null, 2)
                         }}</pre>
                       </div>
-                    </n-tab-pane>
-                    <n-tab-pane name="compact" display-directive="show:lazy">
+                    </NTabPane>
+                    <NTabPane name="compact" display-directive="show:lazy">
                       <template #tab>
                         <n-icon size="14" class="mr-1">
                           <svg viewBox="0 0 24 24">
@@ -369,8 +369,8 @@
                           JSON.stringify(historyMessage.data)
                         }}</pre>
                       </div>
-                    </n-tab-pane>
-                  </n-tabs>
+                    </NTabPane>
+                  </NTabs>
                 </n-collapse-item>
               </n-collapse>
             </div>
@@ -392,7 +392,7 @@
 
 <script setup>
 import { AlertCircleOutline } from "@vicons/ionicons5";
-import { useMessage } from "naive-ui";
+import { NTabPane, NTabs, useMessage } from "naive-ui";
 import { computed, ref, watch } from "vue";
 import { selectedTokenId, useTokenStore } from "@/stores/tokenStore";
 
