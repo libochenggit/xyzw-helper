@@ -1,8 +1,9 @@
-# Railway / Nixpacks 构建配置
-# 后端代码在 render-backend 子目录
+[nixpacks]
+builder = "node"
 
-[phases.install]
-cmds = ['cd render-backend && npm install']
+[build]
+command = "cd render-backend && npm install"
 
 [start]
-cmd = 'cd render-backend && node server.js'
+command = "cd render-backend && node server.js"
+port = 3000
